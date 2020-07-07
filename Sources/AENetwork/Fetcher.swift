@@ -49,37 +49,51 @@ open class Fetcher {
             self.data = data
         }
     }
-
+    
     public enum Error: Swift.Error {
         case invalidResponse(Response)
     }
-
+    
     public typealias ResponseResult = Result<Response, Swift.Error>
     public typealias Callback = ResultCallback<Response>
-
+    
     // MARK: Properties
-
+    
     public weak var delegate: FetcherDelegate?
-
+    
     private let session: URLSession
     private let queue = DispatchQueue(label: "AENetwork.Fetcher.Queue")
-
+    
     // MARK: Init
-
+    
     public init(session: URLSession = .shared) {
         self.session = session
     }
-
+    
     // MARK: API
-
+    
     public func send(_ request: URLRequest, completion: @escaping Callback) {
         queue.async { [unowned self] in
             self.handleRequest(request, completion: completion)
         }
     }
-
+    
     // MARK: Helpers
-
+    private func deletePreviousTasks(url:URL){
+        if #available(iOS 9.0, *) {
+            session.getAllTasks(completionHandler: {(tasks) in
+                tasks.forEach {
+                    var components = URLComponents(string: ($0.currentRequest?.url!.absoluteString)!)!
+                    components.query = nil
+                    if components.url == url{
+                        $0.cancel()}
+                }
+            })
+        } else {
+            // Fallback on earlier versions
+        }
+    }
+    
     private func handleRequest(_ request: URLRequest, completion: @escaping Callback) {
         do {
             let finalRequest = try interceptedRequest(for: request)
@@ -108,8 +122,11 @@ open class Fetcher {
             }
         }
     }
-
+    
     private func resumeDataTask(with request: URLRequest, completion: @escaping Callback) {
+        var components = URLComponents(string: request.url!.absoluteString)!
+        components.query = nil
+        self.deletePreviousTasks(url: components.url!)
         session.dataTask(with: request) { [weak self] data, response, error in
             if error == nil, let response = response as? HTTPURLResponse, let data = data {
                 self?.handleValidResponse(
